@@ -1,0 +1,63 @@
+# =============================================================================
+# MLOps Model Repository - .gitignore
+# =============================================================================
+
+# Deployment artifacts (학습 후 생성)
+.deploy_artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Model artifacts
+*.pth
+*.pt
+*.h5
+*.pkl
+*.joblib
+*.onnx
+checkpoints/
+
+# Data
+*.csv
+*.parquet
+data/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+
+# Dev environment
+.envrc
+.direnv/
+.python-version

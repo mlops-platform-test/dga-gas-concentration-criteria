@@ -1,0 +1,145 @@
+config_version: 1
+
+meta:
+  name: "gas_concentration_criteria"
+  owner: "dx04"
+  model_kind: "logic"
+
+pipeline:
+  schedule:
+    cron: null
+    timezone: "Asia/Seoul"
+  retries:
+    count: 1
+    delay_minutes: 1
+  executor:
+    type: "kubernetes"
+    kubernetes:
+      namespace: "mlops"
+      image_pull_policy: "IfNotPresent"
+      image_pull_secrets: ["harbor-pull-secret"]
+      resources:
+        cpu_request: "1"
+        cpu_limit: "2"
+        memory_request: "1Gi"
+        memory_limit: "2Gi"
+        gpu_limit: 0
+
+mlflow:
+  experiment_name: "dx04/gas_concentration_criteria"
+
+stages:
+  kind: logic
+  prepare_data:
+    callable: "models.gas_concentration_criteria.logic.prepare_data"
+  run_logic:
+    callable: "models.gas_concentration_criteria.logic.run_logic"
+  export_result:
+    callable: "models.gas_concentration_criteria.logic.export_result"
+  register_logic_model:
+    callable: "models.gas_concentration_criteria.logic.register_logic_model"
+
+serving:
+  enabled: true
+  mode: bentoml-server
+  protocol: http
+  selector:
+    strategy: "latest"
+  input:
+    kind: tabular
+    batch: true
+    fields:
+      - name: h2
+        dtype: float32
+        description: "H2 농도 (ppm)"
+      - name: ch4
+        dtype: float32
+        description: "CH4 농도 (ppm)"
+      - name: c2h2
+        dtype: float32
+        description: "C2H2 농도 (ppm)"
+      - name: c2h4
+        dtype: float32
+        description: "C2H4 농도 (ppm)"
+      - name: c2h6
+        dtype: float32
+        description: "C2H6 농도 (ppm)"
+      - name: co
+        dtype: float32
+        description: "CO 농도 (ppm)"
+      - name: co2
+        dtype: float32
+        description: "CO2 농도 (ppm)"
+  output:
+    fields:
+      - name: tcg
+        dtype: float32
+        description: "Total Combustible Gas (ppm)"
+      - name: max_condition_level
+        dtype: int32
+        description: "최대 Condition Level (1~4)"
+      - name: max_condition_label
+        dtype: string
+        description: "최대 Condition Level 문자열 (LEVEL_1~4)"
+      - name: condition_level_H2
+        dtype: int32
+        description: "H2 Condition Level"
+      - name: condition_level_CH4
+        dtype: int32
+        description: "CH4 Condition Level"
+      - name: condition_level_C2H2
+        dtype: int32
+        description: "C2H2 Condition Level"
+      - name: condition_level_C2H4
+        dtype: int32
+        description: "C2H4 Condition Level"
+      - name: condition_level_C2H6
+        dtype: int32
+        description: "C2H6 Condition Level"
+      - name: condition_level_CO
+        dtype: int32
+        description: "CO Condition Level"
+      - name: condition_level_CO2
+        dtype: int32
+        description: "CO2 Condition Level"
+      - name: condition_level_TCG
+        dtype: int32
+        description: "TCG Condition Level"
+      - name: iec_H2
+        dtype: string
+        description: "H2 IEC 60599 판정"
+      - name: iec_CH4
+        dtype: string
+        description: "CH4 IEC 60599 판정"
+      - name: iec_C2H2
+        dtype: string
+        description: "C2H2 IEC 60599 판정"
+      - name: iec_C2H4
+        dtype: string
+        description: "C2H4 IEC 60599 판정"
+      - name: iec_C2H6
+        dtype: string
+        description: "C2H6 IEC 60599 판정"
+      - name: iec_CO
+        dtype: string
+        description: "CO IEC 60599 판정"
+      - name: iec_CO2
+        dtype: string
+        description: "CO2 IEC 60599 판정"
+
+deployment:
+  enabled: true
+  registry: "reg.atgdevs.com/mlops"
+  image_name: "gas_concentration_criteria"
+  tags:
+    - "latest"
+    - "run-{run_id}"
+  description: "Gas Concentration Criteria DGA model - IEEE C57.104 + IEC 60599 기반 가스 농도 평가"
+
+container:
+  deploy:
+    dockerfile: "Dockerfile.deploy"
+    requirements: "requirements.deploy.txt"
+    image_name: "gas_concentration_criteria"
+    base_image: "python:3.11-slim"
+    registry: "reg.atgdevs.com/mlops"

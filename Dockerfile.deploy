@@ -1,0 +1,128 @@
+# ============================================
+# daq_fft - Deployment Container (Self-Contained)
+# ============================================
+# This Dockerfile builds a production-ready deployment image for daq_fft.
+#
+# ✅ Deploy Strategy (2026-01-13):
+# - MLflow artifacts (model + deploy_bundle) are baked into the image
+# - coreflow package is included for BaseModelService
+# - No runtime dependency on MLflow server (fully self-contained)
+# - Multi-stage build for minimal size
+# - Non-root user for security
+#
+# Build Context: Repository root
+# Build Command:
+#   cd /path/to/mlops-platform
+#   docker build -t gas_concentration_criteria-deploy:latest:run-<run_id> -f Dockerfile.deploy .
+#
+# Run:
+#   docker run --rm -p 3000:3000 gas_concentration_criteria-deploy:latest:run-<run_id>
+#
+# Note: MLFLOW_TRACKING_URI is NOT required at runtime (model is pre-loaded)
+# ============================================
+
+# ============================================
+# Stage 1: Builder (Dependencies Installation)
+# ============================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies (minimal)
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy requirements from deploy_bundle (downloaded from MLflow)
+# ✅ Build context is repo root
+# ✅ requirements.deploy.txt was downloaded to .deploy_artifacts/deploy_bundle/model_dir/
+COPY models/gas_concentration_criteria/.deploy_artifacts/deploy_bundle/model_dir/requirements.deploy.txt .
+
+# Install dependencies to user directory (no root required)
+RUN pip install --no-cache-dir --user -r requirements.deploy.txt
+
+# ============================================
+# Stage 2: Runtime (Minimal & Secure)
+# ============================================
+FROM python:3.11-slim
+
+# Metadata
+LABEL maintainer="dx04"
+LABEL model="gas_concentration_criteria"
+LABEL stage="deploy"
+LABEL version="1.0.0"
+LABEL strategy="self-contained"
+
+# Security updates + minimal runtime dependencies
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libgomp1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid 1000 -m -s /bin/bash appuser
+
+# Copy Python packages from builder (no build tools in runtime)
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Set working directory
+WORKDIR /app
+RUN chown -R appuser:appuser /app
+
+# ============================================
+# Copy Application Components
+# ============================================
+
+# 1. Copy coreflow package (required by BaseModelService)
+# ✅ Build context is repo root
+COPY --chown=appuser:appuser coreflow /app/coreflow
+
+# 2. Copy MLflow model artifact (from .deploy_artifacts/model/)
+# This is the trained model with MLmodel file
+COPY --chown=appuser:appuser models/gas_concentration_criteria/.deploy_artifacts/model /app/model
+
+# 3. Copy deploy bundle (service.py, config.yml, logic.py if needed)
+# These files were packaged during training/logic run
+COPY --chown=appuser:appuser models/gas_concentration_criteria/.deploy_artifacts/deploy_bundle/model_dir /app/service
+
+# ============================================
+# Environment Setup
+# ============================================
+
+# Switch to non-root user
+USER appuser
+
+# Add Python packages and app directory to PATH/PYTHONPATH
+ENV PATH="/home/appuser/.local/bin:$PATH"
+ENV PYTHONPATH="/app:/app/service:$PYTHONPATH"
+
+# Model location (service.py will look here first before checking MLflow)
+ENV LOCAL_MODEL_PATH="/app/model"
+
+# MLflow settings (optional - not needed for self-contained deployment)
+# If provided, service can still fall back to MLflow for model updates
+# ENV MLFLOW_TRACKING_URI=http://mlflow:5000
+
+# Set working directory to service code location
+WORKDIR /app/service
+
+# ============================================
+# Entrypoint
+# ============================================
+
+# BentoML will serve service.py from current directory
+CMD ["bentoml", "serve", "."]
+
+# ============================================
+# Health Check
+# ============================================
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1

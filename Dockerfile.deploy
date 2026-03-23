@@ -1,9 +1,9 @@
 # ============================================
-# daq_fft - Deployment Container (Self-Contained)
+# gas_concentration_criteria - Deployment Container (Self-Contained)
 # ============================================
-# This Dockerfile builds a production-ready deployment image for daq_fft.
+# This Dockerfile builds a production-ready deployment image for gas_concentration_criteria.
 #
-# ✅ Deploy Strategy (2026-01-13):
+# Deploy Strategy:
 # - MLflow artifacts (model + deploy_bundle) are baked into the image
 # - coreflow package is included for BaseModelService
 # - No runtime dependency on MLflow server (fully self-contained)
@@ -13,10 +13,10 @@
 # Build Context: Repository root
 # Build Command:
 #   cd /path/to/mlops-platform
-#   docker build -t gas_concentration_criteria-deploy:latest:run-<run_id> -f Dockerfile.deploy .
+#   docker build -t gas_concentration_criteria-deploy:run-<run_id> -f models/gas_concentration_criteria/Dockerfile.deploy .
 #
 # Run:
-#   docker run --rm -p 3000:3000 gas_concentration_criteria-deploy:latest:run-<run_id>
+#   docker run --rm -p 3000:3000 gas_concentration_criteria-deploy:run-<run_id>
 #
 # Note: MLFLOW_TRACKING_URI is NOT required at runtime (model is pre-loaded)
 # ============================================

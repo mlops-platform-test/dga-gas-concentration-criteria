@@ -142,6 +142,6 @@ container:
   deploy:
     dockerfile: "Dockerfile.deploy"
     requirements: "requirements.deploy.txt"
-    image_name: "gas_concentration_criteria-deploy"
+    image_name: "gas_concentration_criteria"
     base_image: "python:3.11-slim"
     registry: "reg.atgdevs.com/mlops"

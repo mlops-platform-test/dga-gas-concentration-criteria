@@ -231,49 +231,32 @@ def rule_logic(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =============================================================================
-# Airflow 파이프라인 스테이지
+# 파이프라인 스테이지
 # =============================================================================
 
-def prepare_data(context: Dict[str, Any]) -> Dict[str, Any]:
-    """데이터 준비"""
-    logger.info("prepare_data: Gas Concentration Criteria logic model")
+def prepare(context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """데이터 준비 — 로직 모델은 외부 데이터 소스 불필요"""
+    logger.info("prepare: Gas Concentration Criteria logic model")
     return {}
 
 
-def run_logic(context: Dict[str, Any], inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """비즈니스 로직 실행"""
-    logger.info(f"run_logic inputs={inputs}")
+def execute(data_paths: Dict[str, Any]) -> Dict[str, str]:
+    """로직 실행 + MLflow 등록 — K8s Pod에서 실행되는 통합 스테이지
 
-    sample_inputs = inputs if inputs else {
-        "h2": 80.0, "ch4": 100.0, "c2h2": 0.5,
-        "c2h4": 30.0, "c2h6": 50.0, "co": 300.0, "co2": 2000.0,
-    }
+    Args:
+        data_paths: prepare() 출력 (로직 모델은 빈 dict)
 
-    df = pd.DataFrame([sample_inputs])
-    results_df = rule_logic(df)
-    results = results_df.to_dict(orient="records")
-
-    logger.info(f"Processed {len(results)} records")
-    return results
-
-
-def export_result(context: Dict[str, Any], results: List[Dict[str, Any]]) -> Dict[str, str]:
-    """결과 내보내기"""
-    logger.info(f"export_result: {results}")
-    return {"exported": f"{len(results)}_records"}
-
-
-def register_logic_model(context: Dict[str, Any], results: List[Dict[str, Any]]) -> Dict[str, str]:
-    """서빙을 위해 모델을 MLflow에 등록"""
-    logger.info(f"register_logic_model results={results}")
+    Returns:
+        {"run_id": "...", "model_uri": "..."}
+    """
     try:
-        logger.info("Registering Gas Concentration Criteria rule model to MLflow")
+        logger.info(f"execute: Gas Concentration Criteria, data_paths={data_paths}")
 
         tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
         experiment_name = _get_experiment_name()
         init_mlflow(tracking_uri=tracking_uri, experiment_name=experiment_name)
 
-        with mlflow.start_run() as run:
+        with mlflow.start_run(run_name=f"{MODEL_NAME}_execute") as run:
             from mlflow.models.signature import infer_signature
 
             example_input = pd.DataFrame([
@@ -290,20 +273,20 @@ def register_logic_model(context: Dict[str, Any], results: List[Dict[str, Any]])
                 signature=signature,
                 registered_model_name=MODEL_NAME,
             )
+            mlflow.set_tag("model_kind", "logic")
+            mlflow.set_tag("source", "airflow")
 
-            logger.info("Logging deploy bundle to MLflow")
-            model_dir = Path(__file__).parent
-            log_deploy_bundle(MODEL_NAME, model_dir)
+            log_deploy_bundle(MODEL_NAME, Path(__file__).parent)
 
-            logger.info(f"Model registered. Run ID: {run.info.run_id}")
+            logger.info(f"execute done. run_id={run.info.run_id}")
             return {
                 "run_id": run.info.run_id,
                 "model_uri": f"runs:/{run.info.run_id}/model",
             }
 
     except Exception as e:
-        logger.error(f"Failed to register model: {e}", exc_info=True)
-        raise MLflowError(f"Model registration failed: {e}") from e
+        logger.error(f"execute failed: {e}", exc_info=True)
+        raise MLflowError(f"execute failed: {e}") from e
 
 
 if __name__ == "__main__":

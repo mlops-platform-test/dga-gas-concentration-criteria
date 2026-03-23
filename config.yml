@@ -30,14 +30,10 @@ mlflow:
 
 stages:
   kind: logic
-  prepare_data:
-    callable: "models.gas_concentration_criteria.logic.prepare_data"
-  run_logic:
-    callable: "models.gas_concentration_criteria.logic.run_logic"
-  export_result:
-    callable: "models.gas_concentration_criteria.logic.export_result"
-  register_logic_model:
-    callable: "models.gas_concentration_criteria.logic.register_logic_model"
+  prepare:
+    callable: "models.gas_concentration_criteria.logic.prepare"
+  execute:
+    callable: "models.gas_concentration_criteria.logic.execute"
 
 serving:
   enabled: true
@@ -137,9 +133,15 @@ deployment:
   description: "Gas Concentration Criteria DGA model - IEEE C57.104 + IEC 60599 기반 가스 농도 평가"
 
 container:
+  execute:
+    dockerfile: "Dockerfile.execute"
+    requirements: "requirements.execute.txt"
+    image_name: "gas_concentration_criteria-execute"
+    base_image: "python:3.11-slim"
+    registry: "reg.atgdevs.com/mlops"
   deploy:
     dockerfile: "Dockerfile.deploy"
     requirements: "requirements.deploy.txt"
-    image_name: "gas_concentration_criteria"
+    image_name: "gas_concentration_criteria-deploy"
     base_image: "python:3.11-slim"
     registry: "reg.atgdevs.com/mlops"

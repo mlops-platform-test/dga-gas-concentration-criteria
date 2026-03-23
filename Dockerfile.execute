@@ -1,0 +1,43 @@
+# ============================================
+# gas_concentration_criteria - Execute Container
+# ============================================
+FROM python:3.11-slim
+
+LABEL maintainer="dx04"
+LABEL model="gas_concentration_criteria"
+LABEL stage="execute"
+LABEL version="1.0.0"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY models/gas_concentration_criteria/requirements.execute.txt /tmp/requirements.execute.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.execute.txt
+
+COPY coreflow /workspace/coreflow
+
+COPY models/gas_concentration_criteria/__init__.py /workspace/models/gas_concentration_criteria/__init__.py
+COPY models/gas_concentration_criteria/logic.py /workspace/models/gas_concentration_criteria/logic.py
+COPY models/gas_concentration_criteria/config.yml /workspace/models/gas_concentration_criteria/config.yml
+COPY models/gas_concentration_criteria/service.py /workspace/models/gas_concentration_criteria/service.py
+COPY models/gas_concentration_criteria/requirements.deploy.txt /workspace/models/gas_concentration_criteria/requirements.deploy.txt
+
+RUN touch /workspace/models/__init__.py
+
+ENV PYTHONPATH="/workspace:${PYTHONPATH}"
+
+CMD ["python", "-m", "coreflow.cli.stage_runner"]
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "from coreflow.cli.stage_runner import main; print('OK')" || exit 1

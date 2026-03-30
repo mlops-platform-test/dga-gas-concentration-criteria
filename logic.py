@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from pathlib import Path
 
 import os
+import requests
 import pandas as pd
 import mlflow
 import mlflow.pyfunc
@@ -231,6 +232,67 @@ def rule_logic(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =============================================================================
+# Infisical Client
+# =============================================================================
+
+class _InfisicalClient:
+    """Infisical Universal Auth 기반 secrets 조회 클라이언트."""
+
+    def __init__(self) -> None:
+        self.base_url = os.environ["INFISICAL_SITE_URL"].rstrip("/")
+        self.client_id = os.environ["INFISICAL_CLIENT_ID"]
+        self.client_secret = os.environ["INFISICAL_CLIENT_SECRET"]
+        self.project_id = os.environ["INFISICAL_PROJECT_ID"]
+        self.environment = os.getenv("INFISICAL_ENV", "dev")
+        self._access_token: str | None = None
+
+    def _login(self) -> None:
+        resp = requests.post(
+            f"{self.base_url}/api/v1/auth/universal-auth/login",
+            json={"clientId": self.client_id, "clientSecret": self.client_secret},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        self._access_token = resp.json()["accessToken"]
+
+    def _headers(self) -> dict:
+        if not self._access_token:
+            self._login()
+        return {"Authorization": f"Bearer {self._access_token}"}
+
+    def get_secrets(self, path: str) -> dict[str, str]:
+        """path 경로의 모든 secrets를 {key: value} dict로 반환."""
+        resp = requests.get(
+            f"{self.base_url}/api/v3/secrets/raw",
+            headers=self._headers(),
+            params={
+                "workspaceId": self.project_id,
+                "environment": self.environment,
+                "secretPath": path,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return {s["secretKey"]: s["secretValue"] for s in resp.json().get("secrets", [])}
+
+
+def _load_secrets_to_env() -> None:
+    """Infisical /platform 경로 secrets를 os.environ에 주입.
+
+    Airflow DAG(model_dag_factory.py)에서 INFISICAL_* 환경변수가 K8s Pod에 주입되므로
+    execute 스테이지에서 이 함수를 호출하여 /platform 시크릿을 로드한다.
+
+    /platform 경로:
+      MLFLOW_TRACKING_URI, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+      AWS_ENDPOINT_URL, MLFLOW_S3_ENDPOINT_URL
+    """
+    secrets = _InfisicalClient().get_secrets("/platform")
+    for key, value in secrets.items():
+        os.environ.setdefault(key, value)
+    logger.info("Infisical /platform secrets 주입 완료 (count=%d)", len(secrets))
+
+
+# =============================================================================
 # 파이프라인 스테이지
 # =============================================================================
 
@@ -251,6 +313,9 @@ def execute(data_paths: Dict[str, Any]) -> Dict[str, str]:
     """
     try:
         logger.info(f"execute: Gas Concentration Criteria, data_paths={data_paths}")
+
+        # Airflow DAG에서 INFISICAL_* 환경변수가 주입되므로 /platform 시크릿 로드
+        _load_secrets_to_env()
 
         tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
         experiment_name = _get_experiment_name()

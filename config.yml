@@ -16,7 +16,7 @@ pipeline:
     type: "kubernetes"
     kubernetes:
       namespace: "mlops"
-      image_pull_policy: "IfNotPresent"
+      image_pull_policy: "Always"
       image_pull_secrets: ["harbor-pull-secret"]
       resources:
         cpu_request: "1"
